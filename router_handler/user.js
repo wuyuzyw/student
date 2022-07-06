@@ -1,10 +1,14 @@
-const { reguserSchema,passwordSchema,loginSchema } = require("../schema")
-const nodemailer=require('nodemailer')
+const { reguserSchema,passwordSchema,loginSchema,no_repeatPasswordSchema } = require("../schema") //导入验证规则模块
+const nodemailer=require('nodemailer') //导入可以处理发送QQ邮件模块
+const bcrypt = require('bcrypt'); //导入密码加密模块
+const jwt = require('jsonwebtoken'); //导入生成tokeb模块
+const privateKey = require('../utils/getprivateKe') //获取私钥的自定义模块
+
 
  /*存放多个用户注册时的信息,例如：
 {
   '726834@qq.com':{
-     code: null, //注册用户的验证码
+     code: null, //用户注册时的验证码
      oldTime: null, //发送验证码的时间
      newTime: null, //注册完成的时间
   },
@@ -12,6 +16,11 @@ const nodemailer=require('nodemailer')
 }
  */
 let userList={}
+const oneDay=1000*60*60*24
+//隔24小时删除没有注册成功的用户信息
+setInterval(() => {
+ userList={}
+}, oneDay);
 //生成随机验证码
 function genrateCode() {
   let Code = ''
@@ -20,11 +29,17 @@ function genrateCode() {
   }
   return Code
 }
+//生成hash密码
+function hashPassword(password){
+  const hash = bcrypt.hashSync(password, 10);
+  return hash
+}
 //注册用户的处理函数
 const reguserHandler = async(req, res) => {
-  const {email,validateCode} = req.body
+  const {email,validateCode,password,repeatPassword} = req.body
   try {
   await reguserSchema.validateAsync({email})
+  await passwordSchema.validateAsync({password,repeatPassword})
   //是否填写了验证码
   if(validateCode&&userList[email]){
     const newTime=+new Date()
@@ -41,7 +56,7 @@ const reguserHandler = async(req, res) => {
             //用户不存在
             if(results.length!==1){
               //向数据库插入用户
-               pool.query('insert user set ?',{username:email},(err,results)=>{
+               pool.query('insert user set ?',{username:email,password:hashPassword(password)},(err,results)=>{
                  if(err){
                    res.cc(err)
                  }else{
@@ -58,7 +73,7 @@ const reguserHandler = async(req, res) => {
             //用户是否是之前注销过的用户 
             else if (results.length === 1 && results[0].status == 0) {
               //恢复用户的账号
-               pool.query('update user set status=1 where id=?', results[0].id, (err, results) => {
+               pool.query('update user set ? where id=?', [{status:1,password:hashPassword(password)},results[0].id], (err, results) => {
                 if(err){
                   res.cc(err)
                 }else{
@@ -137,12 +152,34 @@ const getCodeHandler=async(req,res)=>{
     res.cc(error)
   }
 }
-//设置密码的处理函数
-const setPassword=async(req,res)=>{
-  const {password,repeatPassword}=req.body
+//重新设置密码的处理函数
+const modifyPassword = async (req, res) => {
+  const {password,no_repeatPassword}=req.body
+  const {pool}=req
+  const {id}=req.auth
   try {
-    await passwordSchema.validateAsync({password,repeatPassword})
-    res.cc('ok')
+    await no_repeatPasswordSchema.validateAsync({password,no_repeatPassword})
+    pool.query('select * from user where id=?',id,(err,results)=>{
+      if(err){
+        res.cc(err)
+      }else{
+        if(bcrypt.compareSync(password,results[0].password)){
+          pool.query('update user set ? where id=?',[{password:hashPassword(no_repeatPassword)},id],(err,results)=>{
+            if(err){
+              res.cc(err)
+            }else{
+              if(results.affectedRows===1){
+                res.cc('修改密码成功')
+              }else{
+                res.cc('密码修改失败，请稍后重试!')
+              }
+            }
+          })
+        }else{
+          res.cc('旧密码错误')
+        }
+      }
+    })
   } catch (error) {
     res.cc(error)
   }
@@ -158,8 +195,15 @@ const loginHandler=async(req,res)=>{
         res.cc(err)
       }else{
         if(results.length===1){
-          if(password===results[0].password){
-            res.cc('登入成功！',0)
+          if(bcrypt.compareSync(password,results[0].password)){
+            const token = jwt.sign({id:results[0].id,username:results[0].username}, privateKey,{expiresIn:'24h'});
+            res.send({
+              message:'登入成功',
+              token:'Bearer '+token,
+              status:0
+            })
+          }else{
+            res.cc('密码错误！')
           }
         }else{
           res.cc('用户名不存在')
@@ -171,5 +215,5 @@ const loginHandler=async(req,res)=>{
   }
 }
 module.exports={
-  reguserHandler, getCodeHandler, setPassword,loginHandler
+  reguserHandler, getCodeHandler, modifyPassword, loginHandler
 }
