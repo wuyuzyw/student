@@ -18,6 +18,22 @@ const password = Joi.string().required().pattern(/^(?=.*[a-zA-Z])(?=.*\d).{7,15}
 })
 const repeatPassword =Joi.valid(Joi.ref('password')).concat(password)
 const no_repeatPassword=Joi.invalid(Joi.ref('password')).concat(password)
+const nickname=Joi.string().min(3).max(7).required().error(errors=>{
+  switch(errors[0].code){
+      case 'string.empty': return new Error('昵称不能为空')
+      case 'any.required': return new Error('昵称必填项')
+      case 'string.min':
+      case 'string.max':return new Error('昵称长度必须在3至7之间')
+  }
+})
+const avatar = Joi.string().dataUri().required().error(errors => {
+  console.log(errors);
+  switch(errors[0].code){
+     case 'string.empty': return new Error('头像不能为空')
+     case 'any.required': return new Error('头像必填项')
+     case 'string.dataUri':return new Error('请输入有效的格式')
+  }
+})
 //注册（用户名|QQ邮箱）的验证规则
 module.exports.reguserSchema=Joi.object({
   email
@@ -36,4 +52,12 @@ module.exports.loginSchema=Joi.object({
 module.exports.no_repeatPasswordSchema=Joi.object({
   password,
   no_repeatPassword
+})
+//添加（修改）昵称的验证规则
+module.exports.nicknameSchema=Joi.object({
+  nickname
+})
+//添加（修改）用户头像的验证规则
+module.exports.avatarSchema=Joi.object({
+  avatar
 })

@@ -1,9 +1,9 @@
-const { reguserSchema,passwordSchema,loginSchema,no_repeatPasswordSchema } = require("../schema") //导入验证规则模块
+const { reguserSchema,passwordSchema,loginSchema,no_repeatPasswordSchema,nicknameSchema,avatarSchema } = require("../schema") //导入验证规则模块
 const nodemailer=require('nodemailer') //导入可以处理发送QQ邮件模块
 const bcrypt = require('bcrypt'); //导入密码加密模块
 const jwt = require('jsonwebtoken'); //导入生成tokeb模块
 const privateKey = require('../utils/getprivateKe') //获取私钥的自定义模块
-
+const fs=require('fs');
 
  /*存放多个用户注册时的信息,例如：
 {
@@ -169,7 +169,7 @@ const modifyPassword = async (req, res) => {
               res.cc(err)
             }else{
               if(results.affectedRows===1){
-                res.cc('修改密码成功')
+                res.cc('修改密码成功',0)
               }else{
                 res.cc('密码修改失败，请稍后重试!')
               }
@@ -196,7 +196,7 @@ const loginHandler=async(req,res)=>{
       }else{
         if(results.length===1){
           if(bcrypt.compareSync(password,results[0].password)){
-            const token = jwt.sign({id:results[0].id,username:results[0].username}, privateKey,{expiresIn:'24h'});
+            const token = jwt.sign({id:results[0].id,username:results[0].username,nickname:results[0].nickname}, privateKey,{expiresIn:'24h'});
             res.send({
               message:'登入成功',
               token:'Bearer '+token,
@@ -214,6 +214,57 @@ const loginHandler=async(req,res)=>{
     res.cc(error)
   }
 }
+//添加（修改）用户昵称的处理函数
+const modifyNivknameHandler=async(req,res)=>{
+  const {nickname}=req.body
+  const {pool} =req
+  const {id}=req.auth
+  try {
+    await nicknameSchema.validateAsync({nickname})
+    pool.query('update user set ? where id=?',[{nickname},id],(err,results)=>{
+      if(err){
+        res.cc(err)
+      }else{
+        if(results.affectedRows===1){
+          res.cc('用户昵称修改成功！',0)
+        }else{
+          res.cc('用户昵称修改失败，请稍后重试')
+        }
+      }
+    })
+  } catch (error) {
+    res.cc(error)
+  }
+}
+//添加（修改）、用户头像的处理函数
+const modifyAvatarHandler=async(req,res)=>{
+  if(req.file){
+    const {id}=req.auth
+    const {pool}=req
+    const {path,mimetype}=req.file
+    let avatarStr=fs.readFileSync(path,'base64')
+    avatar = `data:${mimetype};base64,${avatarStr}`
+    try {
+      await avatarSchema.validateAsync({avatar})
+      pool.query('update user set ? where id=?',[{avatar},id],(err,results)=>{
+        if(err){
+          res.cc(err)
+        }else{
+          if(results.affectedRows==1){
+            res.cc('用户头像修改成功',0)
+            fs.unlinkSync(path)
+          }else{
+            res.cc('用户头像修改失败，请稍后重试')
+          }
+        }
+      })
+    } catch (error) {
+      res.cc(error)
+    }
+  }else{
+    res.cc('图片格式必须是jpeg,png,gif')
+  }
+}
 module.exports={
-  reguserHandler, getCodeHandler, modifyPassword, loginHandler
+  reguserHandler, getCodeHandler, modifyPassword, loginHandler, modifyNivknameHandler, modifyAvatarHandler
 }

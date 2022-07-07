@@ -18,7 +18,7 @@ const db=function(req,res,next){
   req.pool=pool
   next()
 }
-app.use(express.urlencoded({extended:false})).use( jwt({ secret: privateKey, algorithms: ["HS256"] }).unless({path:['/user/login','/user/reguser','/user/getCode']})).use(resData).use(db).use('/user',userRouter)
+app.use(express.urlencoded({extended:false})).use(express.json()).use( jwt({ secret: privateKey, algorithms: ["HS256"] }).unless({path:['/user/login','/user/reguser','/user/getCode']})).use(resData).use(db).use('/user',userRouter)
 app.use(function(err,req,res,next){
   if (err.name === 'UnauthorizedError'){
     res.send({

@@ -1,6 +1,6 @@
 const mysql=require('mysql')
-const pool = mysql.createPool({
-  // connectionLimit: 100, //设置最大连接数
+var pool = mysql.createPool({
+  // connectionLimit: 10,
   host: '127.0.0.1',
   user: 'root',
   password: '123456',
