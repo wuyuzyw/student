@@ -27,11 +27,16 @@ const nickname=Joi.string().min(3).max(7).required().error(errors=>{
   }
 })
 const avatar = Joi.string().dataUri().required().error(errors => {
-  console.log(errors);
   switch(errors[0].code){
      case 'string.empty': return new Error('头像不能为空')
      case 'any.required': return new Error('头像必填项')
      case 'string.dataUri':return new Error('请输入有效的格式')
+  }
+})
+const sex=Joi.string().required().valid('男','女').error(errors=>{
+  switch(errors[0].code){
+      case 'any.required': return new Error('性别必填项')
+      case 'any.only':return new Error('性别只能是男或女')
   }
 })
 //注册（用户名|QQ邮箱）的验证规则
@@ -60,4 +65,7 @@ module.exports.nicknameSchema=Joi.object({
 //添加（修改）用户头像的验证规则
 module.exports.avatarSchema=Joi.object({
   avatar
+})
+module.exports.sexSchema=Joi.object({
+  sex
 })

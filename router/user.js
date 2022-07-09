@@ -1,10 +1,9 @@
 const express =require('express')
 const multer = require('multer');
 const path=require('path');
-const { deflateRawSync } = require('zlib');
 const {
   reguserHandler,
-  getCodeHandler, modifyPassword, loginHandler, modifyAvatarHandler, modifyNivknameHandler
+  getCodeHandler, modifyPassword, loginHandler, modifyAvatarHandler, modifyNivknameHandler, modifySex, retrievePassword, cancelUser
 } = require('../router_handler/user')
 const userRouter =express.Router()
 userRouter.post('/reguser',reguserHandler)
@@ -44,4 +43,10 @@ userRouter.post('/avatar',function(req,res,next){
     }
   })
 },modifyAvatarHandler)
+//修改性别
+userRouter.post('/sex',modifySex)
+//找回密码
+userRouter.get('/retrievePassword', retrievePassword)
+// 注销账号
+userRouter.get('/cancelUser', cancelUser)
 module.exports=userRouter

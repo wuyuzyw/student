@@ -1,4 +1,4 @@
-const { reguserSchema,passwordSchema,loginSchema,no_repeatPasswordSchema,nicknameSchema,avatarSchema } = require("../schema") //导入验证规则模块
+const { reguserSchema,passwordSchema,loginSchema,no_repeatPasswordSchema,nicknameSchema,avatarSchema,sexSchema } = require("../schema") //导入验证规则模块
 const nodemailer=require('nodemailer') //导入可以处理发送QQ邮件模块
 const bcrypt = require('bcrypt'); //导入密码加密模块
 const jwt = require('jsonwebtoken'); //导入生成tokeb模块
@@ -16,6 +16,16 @@ const fs=require('fs');
 }
  */
 let userList={}
+//发送邮件的相关配置
+const mailTransport = nodemailer.createTransport({
+  service: 'qq',
+  secure: true,
+  auth: {
+    user: '3060580200@qq.com',
+    pass: 'salvfaonnomtdgfh'
+  }
+})
+//一天的毫秒数
 const oneDay=1000*60*60*24
 //隔24小时删除没有注册成功的用户信息
 setInterval(() => {
@@ -40,8 +50,8 @@ const reguserHandler = async(req, res) => {
   try {
   await reguserSchema.validateAsync({email})
   await passwordSchema.validateAsync({password,repeatPassword})
-  //是否填写了验证码
-  if(validateCode&&userList[email]){
+  //是否获取验证码
+  if(userList[email]){
     const newTime=+new Date()
     userList[email].newTime=newTime
     //判断是否在60秒内注册，如果不是验证码失效，需重新获取
@@ -117,18 +127,10 @@ const getCodeHandler=async(req,res)=>{
       }
     }
     // start 实现发送QQ邮件
-    const mailTransport = nodemailer.createTransport({
-      service: 'qq',
-      secure: true,
-      auth: {
-        user: '3060580200@qq.com',
-        pass: 'salvfaonnomtdgfh'
-      } 
-    })
     const options = {
       from: '3060580200@qq.com',
       to: email,
-      subject: '用户注册',
+      subject: '用户注册或找回密码',
       html: `<h1>hello ,您的注册验证码为:${code}有效期是60秒</h1>`
     };
     const time=+new Date()
@@ -141,11 +143,11 @@ const getCodeHandler=async(req,res)=>{
           res.cc(err);
         } else {
           userList[email].oldTime =+new Date()
-          res.cc('验证码已发送',0);
+          res.cc('验证码已发送至QQ邮箱',0);
         }
       })
     }else{
-      res.cc('已发送验证码，注意查收')
+      res.cc('已发送验证码至QQ邮箱，注意查收')
     }
     // end
   } catch (error) {
@@ -194,12 +196,14 @@ const loginHandler=async(req,res)=>{
       if(err){
         res.cc(err)
       }else{
-        if(results.length===1){
+        if(results.length===1 && results[0].status===1){
           if(bcrypt.compareSync(password,results[0].password)){
             const token = jwt.sign({id:results[0].id,username:results[0].username,nickname:results[0].nickname}, privateKey,{expiresIn:'24h'});
             res.send({
               message:'登入成功',
-              token:'Bearer '+token,
+              data:{
+                token:'Bearer '+token
+              },
               status:0
             })
           }else{
@@ -265,6 +269,94 @@ const modifyAvatarHandler=async(req,res)=>{
     res.cc('图片格式必须是jpeg,png,gif')
   }
 }
+//修改性别的处理函数
+const modifySex=async(req,res)=>{
+  const {sex} =req.body
+  const {pool} =req
+  const {id}=req.auth
+  try {
+    await sexSchema.validateAsync({sex})
+    pool.query('update user set ? where id=?',[{sex},id],(err,results)=>{
+      if(err){
+        res.cc(err)
+      }else{
+        if(results.affectedRows===1){
+          res.cc('用户性别更新成功', 0)
+        }else{
+          res.cc('用户性别更新失败，请稍后重试！')
+        }
+      }
+    })
+  } catch (error) {
+    res.cc(error)
+  }
+}
+//找回密码的处理函数
+const retrievePassword=async (req,res)=>{
+  const {validateCode,email}=req.query
+  const {pool}=req
+  try {
+    await reguserSchema.validateAsync({email})
+    if(userList[email]){
+      const newTime =+new Date()
+     userList[email].newTime=newTime
+     if((userList[email].newTime-userList[email].oldTime)/1000<=60){
+        if(validateCode===userList[email].code){
+          const Tempassword = '111111a'
+          const password = hashPassword(Tempassword)
+          pool.query('update user set ? where username=?',[{password},email],(err,results)=>{
+            if(err){
+              res.cc(err)
+            }else{
+              if(results.affectedRows===1){
+                const options = {
+                  from: '3060580200@qq.com',
+                  to: email,
+                  subject: '登入密码',
+                  html: `<h1>hello ,您的登入密码为:${Tempassword},密码简单，请及时更改</h1>`
+                };
+                 mailTransport.sendMail(options, function (err, msg) {
+                   if (err) {
+                     res.cc(err);
+                   } else {
+                     res.cc('登入密码已发送至QQ邮箱', 0);
+                     delete userList[email] //删除用户临时的信息
+                   }
+                 })
+              }else{
+                res.cc('登入密码获取失败,请稍后重试')
+              }
+            }
+          })
+        }else{
+          res.cc('请输入正确的验证码')
+        }
+     }else{
+      res.cc('验证码失效，请重新获取！')
+     }
+    }else{
+      res.cc('请获取验证码')
+    }
+  } catch (error) {
+    res.cc(error)
+  }
+}
+// 注销账号的处理函数
+const cancelUser=(req,res)=>{
+  const {id} = req.auth
+  const {pool} = req
+  pool.query('update user set ? where id=?',[{status:0},id],(err,results)=>{
+    if(err){
+      res.cc(err)
+    }else{
+      if(results.affectedRows===1){
+        res.cc('账号注销成功',0)
+      }else{
+        res.cc('注销找好失败,请稍后重试')
+      }
+    }
+  })
+}
 module.exports={
-  reguserHandler, getCodeHandler, modifyPassword, loginHandler, modifyNivknameHandler, modifyAvatarHandler
+  reguserHandler, getCodeHandler, modifyPassword, loginHandler, modifyNivknameHandler, modifyAvatarHandler, modifySex, retrievePassword, cancelUser
 }
